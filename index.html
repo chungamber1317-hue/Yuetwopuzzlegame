@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>悅和醬園拼圖游戲</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- GSAP 动画库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#FF8C38',
+                        secondary: '#8B4513',
+                        accent: '#FFA500',
+                        dark: '#333333',
+                        light: '#FFF8E7'
+                    },
+                    fontFamily: {
+                        sans: ['Arial', 'sans-serif'],
+                    },
+                    animation: {
+                        'bounce-slow': 'bounce 2s infinite',
+                        'spin-slow': 'spin 3s linear infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .bg-gradient-orange-brown {
+                background: linear-gradient(135deg, #FF8C38 0%, #8B4513 100%);
+            }
+            .text-shadow {
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            }
+            .puzzle-piece {
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+            .puzzle-piece:hover {
+                transform: scale(1.05);
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            }
+            .puzzle-piece.dragging {
+                opacity: 0.8;
+                z-index: 50;
+            }
+            .puzzle-slot {
+                transition: all 0.3s ease;
+                border: 2px dashed #FF8C38;
+            }
+            .puzzle-slot.correct {
+                border: 3px solid #4CAF50;
+            }
+            .puzzle-slot.highlight {
+                border-color: #FFA500;
+                background-color: rgba(255, 165, 0, 0.2);
+            }
+            .confetti {
+                position: absolute;
+                width: 10px;
+                height: 10px;
+                background-color: #f00;
+                opacity: 0.8;
+                animation: confetti-fall 5s ease-in-out infinite;
+            }
+            @keyframes confetti-fall {
+                0% {
+                    transform: translateY(-100vh) rotate(0deg);
+                    opacity: 1;
+                }
+                100% {
+                    transform: translateY(100vh) rotate(720deg);
+                    opacity: 0;
+                }
+            }
+            .timer-pulse {
+                animation: pulse 1s ease-in-out infinite;
+            }
+            @keyframes pulse {
+                0%, 100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.7;
+                }
+            }
+            .gift-box {
+                perspective: 1000px;
+            }
+            .gift-box-inner {
+                transition: transform 0.6s;
+                transform-style: preserve-3d;
+            }
+            .gift-box:hover .gift-box-inner {
+                transform: rotateY(180deg);
+            }
+            .backface-hidden {
+                backface-visibility: hidden;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+            }
+        }
+    </style>
+</head>
+<body class="bg-light min-h-screen flex flex-col items-center justify-center p-4">
+    <!-- 游戏容器 -->
+    <div id="game-container" class="w-full max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
+        <!-- 游戏标题 -->
+        <div class="bg-gradient-orange-brown text-white p-4 text-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-shadow">悅和醬園拼圖游戲</h1>
+        </div>
+        
+        <!-- 游戏信息栏 -->
+        <div class="bg-orange-50 p-4 flex justify-between items-center">
+            <div class="flex items-center">
+                <i class="fa fa-clock-o text-primary text-xl mr-2"></i>
+                <div id="timer" class="text-lg font-bold text-dark">01:00</div>
+            </div>
+            <button id="restart-btn" class="bg-primary hover:bg-orange-600 text-white px-4 py-2 rounded-lg transition-colors duration-300 flex items-center">
+                <i class="fa fa-refresh mr-2"></i>重新開始
+            </button>
+        </div>
+        
+        <!-- 拼图区域 -->
+        <div class="p-4">
+            <!-- 游戏说明 -->
+            <div class="bg-orange-50 rounded-lg p-4 mb-4">
+                <h3 class="text-lg font-bold text-primary mb-2">遊戲說明</h3>
+                <p class="text-gray-700">請在60秒內將下方的九塊拼圖碎片拖放到上方的拼圖板中，恢復完整的圖片。</p>
+            </div>
+            
+            <!-- 原始图片预览 -->
+            <div class="mb-4 flex justify-center">
+                <div class="w-32 h-32 rounded-lg overflow-hidden border-2 border-primary shadow-md">
+                    <img id="original-image" src="https://p26-flow-imagex-download-sign.byteimg.com/tos-cn-i-a9rns2rl98/50e6c6fbe58e4c1a9d13233f04ec5bdd.png~tplv-a9rns2rl98-24:720:720.png?rcl=20251104160644A49CF6C05D6FC7D91ACC&rk3s=8e244e95&rrcfp=8a172a1a&x-expires=1762848404&x-signature=1LqMcyJPChwDqHhi0EpWtcgaSI4%3D" 
+                         alt="拼圖原圖" class="w-full h-full object-cover">
+                </div>
+            </div>
+            
+            <!-- 拼图槽位 -->
+            <div id="puzzle-board" class="w-full aspect-square grid grid-cols-3 grid-rows-3 gap-2 bg-orange-100 rounded-lg p-3 mb-4">
+                <!-- 拼图槽位将由JS动态生成 -->
+            </div>
+            
+            <!-- 拼图碎片 -->
+            <div class="mt-6 text-center text-gray-600">
+                <p>請將下方的九塊拼圖碎片拖放到上方的拼圖板中</p>
+            </div>
+            
+            <h3 class="text-lg font-bold text-primary mb-2 text-center mt-4">拼圖碎片</h3>
+            
+            <div id="puzzle-pieces" class="grid grid-cols-3 gap-4 mt-2 justify-center items-center">
+                <!-- 拼图碎片将由JS动态生成 -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- 成功弹窗 -->
+    <div id="success-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 transform transition-all duration-500 scale-95 opacity-0" id="success-content">
+            <div class="text-center">
+                <div class="gift-box mx-auto mb-4 w-32 h-32">
+                    <div class="gift-box-inner w-full h-full relative">
+                        <div class="absolute w-full h-full bg-gradient-orange-brown rounded-lg flex items-center justify-center transform rotateY(0deg) backface-hidden">
+                            <i class="fa fa-gift text-white text-5xl"></i>
+                        </div>
+                        <div class="absolute w-full h-full bg-gradient-to-br from-green-400 to-green-600 rounded-lg flex items-center justify-center transform rotateY(180deg) backface-hidden">
+                            <i class="fa fa-check text-white text-5xl"></i>
+                        </div>
+                    </div>
+                </div>
+                <h2 class="text-3xl font-bold text-primary mb-2">恭喜你！</h2>
+                <p class="text-xl text-dark mb-6">你成功完成了拼圖挑戰！</p>
+                <div class="bg-green-100 text-green-800 p-4 rounded-lg mb-6">
+                    <p class="font-bold">獲得禮品：</p>
+                    <p class="text-lg">精美醬料禮盒一套</p>
+                </div>
+                <button id="claim-btn" class="bg-gradient-orange-brown hover:opacity-90 text-white text-lg font-bold py-3 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+                    領取禮品
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 失败弹窗 -->
+    <div id="fail-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 transform transition-all duration-500 scale-95 opacity-0" id="fail-content">
+            <div class="text-center">
+                <div class="w-24 h-24 mx-auto mb-4 flex items-center justify-center rounded-full bg-red-100">
+                    <i class="fa fa-clock-o text-red-500 text-4xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-red-500 mb-2">時間到！</h2>
+                <p class="text-xl text-dark mb-6">很遺憾，你未能在規定時間內完成拼圖</p>
+                <div class="flex justify-center space-x-4">
+                    <button id="try-again-btn" class="bg-gradient-orange-brown hover:opacity-90 text-white text-lg font-bold py-3 px-8 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+                        再試一次
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 游戏配置
+        const GAME_CONFIG = {
+            rows: 3,
+            cols: 3,
+            timeLimit: 60, // 60秒
+            imageUrl: "https://p26-flow-imagex-download-sign.byteimg.com/tos-cn-i-a9rns2rl98/50e6c6fbe58e4c1a9d13233f04ec5bdd.png~tplv-a9rns2rl98-24:720:720.png?rcl=20251104160644A49CF6C05D6FC7D91ACC&rk3s=8e244e95&rrcfp=8a172a1a&x-expires=1762848404&x-signature=1LqMcyJPChwDqHhi0EpWtcgaSI4%3D"
+        };
+        
+        // 游戏状态
+        const GAME_STATE = {
+            pieces: [],
+            slots: [],
+            correctPieces: 0,
+            timeLeft: GAME_CONFIG.timeLimit,
+            timerInterval: null,
+            isGameActive: false
+        };
+        
+        // DOM元素
+        const puzzleBoard = document.getElementById('puzzle-board');
+        const puzzlePieces = document.getElementById('puzzle-pieces');
+        const timerElement = document.getElementById('timer');
+        const restartBtn = document.getElementById('restart-btn');
+        const successModal = document.getElementById('success-modal');
+        const successContent = document.getElementById('success-content');
+        const failModal = document.getElementById('fail-modal');
+        const failContent = document.getElementById('fail-content');
+        const claimBtn = document.getElementById('claim-btn');
+        const tryAgainBtn = document.getElementById('try-again-btn');
+        
+        // 初始化游戏
+        function initGame() {
+            // 清空之前的游戏状态
+            puzzleBoard.innerHTML = '';
+            puzzlePieces.innerHTML = '';
+            GAME_STATE.pieces = [];
+            GAME_STATE.slots = [];
+            GAME_STATE.correctPieces = 0;
+            GAME_STATE.timeLeft = GAME_CONFIG.timeLimit;
+            updateTimer();
+            
+            // 创建拼图槽位
+            for (let row = 0; row < GAME_CONFIG.rows; row++) {
+                for (let col = 0; col < GAME_CONFIG.cols; col++) {
+                    const slotIndex = row * GAME_CONFIG.cols + col;
+                    const slot = document.createElement('div');
+                    slot.className = 'puzzle-slot bg-orange-200 rounded-lg overflow-hidden';
+                    slot.dataset.index = slotIndex;
+                    slot.dataset.row = row;
+                    slot.dataset.col = col;
+                    puzzleBoard.appendChild(slot);
+                    GAME_STATE.slots.push(slot);
+                }
+            }
+            
+            // 加载图片并创建拼图碎片
+            const image = new Image();
+            image.crossOrigin = "Anonymous"; // 解决跨域问题
+            image.src = GAME_CONFIG.imageUrl;
+            
+            image.onload = function() {
+                // 创建拼图碎片
+                createPuzzlePieces(image);
+                
+                // 开始游戏
+                startGame();
+            };
+            
+            image.onerror = function() {
+                console.error('图片加载失败');
+                alert('图片加载失败，请刷新页面重试。');
+            };
+        }
+        
+        // 创建拼图碎片
+        function createPuzzlePieces(image) {
+            // 创建一个临时画布来处理图片
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 设置画布大小为图片实际大小
+            canvas.width = image.width;
+            canvas.height = image.height;
+            ctx.drawImage(image, 0, 0);
+            
+            // 计算每个碎片的大小
+            const pieceWidth = image.width / GAME_CONFIG.cols;
+            const pieceHeight = image.height / GAME_CONFIG.rows;
+            
+            // 创建所有碎片
+            for (let row = 0; row < GAME_CONFIG.rows; row++) {
+                for (let col = 0; col < GAME_CONFIG.cols; col++) {
+                    const pieceIndex = row * GAME_CONFIG.cols + col;
+                    
+                    // 创建一个新的画布来保存单个碎片
+                    const pieceCanvas = document.createElement('canvas');
+                    const pieceCtx = pieceCanvas.getContext('2d');
+                    pieceCanvas.width = pieceWidth;
+                    pieceCanvas.height = pieceHeight;
+                    
+                    // 从原图中裁剪出碎片
+                    pieceCtx.drawImage(
+                        image,
+                        col * pieceWidth, row * pieceHeight, pieceWidth, pieceHeight,
+                        0, 0, pieceWidth, pieceHeight
+                    );
+                    
+                    // 创建碎片元素
+                    const piece = document.createElement('div');
+                    piece.className = 'puzzle-piece cursor-grab bg-cover bg-center rounded-lg overflow-hidden shadow-md';
+                    piece.dataset.index = pieceIndex;
+                    piece.dataset.row = row;
+                    piece.dataset.col = col;
+                    
+                    // 设置碎片背景为裁剪出的图像
+                    piece.style.width = `${pieceWidth}px`;
+                    piece.style.height = `${pieceHeight}px`;
+                    piece.style.backgroundImage = `url(${pieceCanvas.toDataURL()})`;
+                    
+                    // 添加拖拽事件
+                    addDragEvents(piece);
+                    
+                    puzzlePieces.appendChild(piece);
+                    GAME_STATE.pieces.push(piece);
+                }
+            }
+            
+            // 打乱碎片顺序
+            shufflePieces();
+        }
+        
+        // 打乱碎片顺序
+        function shufflePieces() {
+            const pieces = Array.from(puzzlePieces.children);
+            pieces.forEach(piece => puzzlePieces.removeChild(piece));
+            
+            // Fisher-Yates 洗牌算法
+            for (let i = pieces.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
+            }
+            
+            pieces.forEach(piece => puzzlePieces.appendChild(piece));
+        }
+        
+        // 添加拖拽事件
+        function addDragEvents(piece) {
+            piece.draggable = true;
+            
+            piece.addEventListener('dragstart', function(e) {
+                if (!GAME_STATE.isGameActive) return;
+                
+                piece.classList.add('dragging');
+                e.dataTransfer.setData('text/plain', piece.dataset.index);
+                
+                // 添加拖拽效果
+                setTimeout(() => {
+                    piece.style.opacity = '0.5';
+                }, 0);
+            });
+            
+            piece.addEventListener('dragend', function() {
+                piece.classList.remove('dragging');
+                piece.style.opacity = '1';
+                
+                // 移除所有槽位的高亮效果
+                GAME_STATE.slots.forEach(slot => slot.classList.remove('highlight'));
+            });
+        }
+        
+        // 添加放置事件
+        function addDropEvents() {
+            GAME_STATE.slots.forEach(slot => {
+                slot.addEventListener('dragover', function(e) {
+                    if (!GAME_STATE.isGameActive) return;
+                    
+                    e.preventDefault();
+                    slot.classList.add('highlight');
+                });
+                
+                slot.addEventListener('dragleave', function() {
+                    slot.classList.remove('highlight');
+                });
+                
+                slot.addEventListener('drop', function(e) {
+                    if (!GAME_STATE.isGameActive) return;
+                    
+                    e.preventDefault();
+                    slot.classList.remove('highlight');
+                    
+                    const pieceIndex = e.dataTransfer.getData('text/plain');
+                    const piece = document.querySelector(`.puzzle-piece[data-index="${pieceIndex}"]`);
+                    
+                    // 检查是否已经有碎片在这个槽位
+                    if (slot.querySelector('.puzzle-piece')) {
+                        // 如果已有碎片，添加动画提示
+                        gsap.to(slot, {
+                            scale: 1.05,
+                            duration: 0.2,
+                            yoyo: true,
+                            repeat: 1
+                        });
+                        return;
+                    }
+                    
+                    // 移动碎片到槽位
+                    slot.appendChild(piece);
+                    piece.classList.add('placed');
+                    piece.classList.remove('cursor-grab');
+                    
+                    // 检查是否放置正确
+                    checkPieceCorrectness(piece, slot);
+                });
+            });
+        }
+        
+        // 检查碎片是否放置正确
+        function checkPieceCorrectness(piece, slot) {
+            const pieceIndex = parseInt(piece.dataset.index);
+            const slotIndex = parseInt(slot.dataset.index);
+            
+            if (pieceIndex === slotIndex) {
+                // 放置正确
+                piece.classList.add('correct');
+                slot.classList.add('correct');
+                piece.draggable = false;
+                
+                // 播放正确动画
+                gsap.to(piece, {
+                    scale: 1.05,
+                    duration: 0.3,
+                    yoyo: true,
+                    repeat: 1
+                });
+                
+                GAME_STATE.correctPieces++;
+                
+                // 检查游戏是否完成
+                if (GAME_STATE.correctPieces === GAME_CONFIG.rows * GAME_CONFIG.cols) {
+                    endGame(true);
+                }
+            } else {
+                // 放置错误
+                gsap.to(piece, {
+                    x: 10,
+                    duration: 0.1,
+                    yoyo: true,
+                    repeat: 3
+                });
+                
+                // 2秒后将碎片返回原位
+                setTimeout(() => {
+                    if (slot.contains(piece)) {
+                        puzzlePieces.appendChild(piece);
+                        piece.classList.remove('placed');
+                        piece.classList.add('cursor-grab');
+                    }
+                }, 2000);
+            }
+        }
+        
+        // 开始游戏
+        function startGame() {
+            GAME_STATE.isGameActive = true;
+            addDropEvents();
+            
+            // 开始计时器
+            GAME_STATE.timerInterval = setInterval(function() {
+                GAME_STATE.timeLeft--;
+                updateTimer();
+                
+                // 检查时间是否用完
+                if (GAME_STATE.timeLeft <= 0) {
+                    endGame(false);
+                }
+                
+                // 最后10秒添加视觉提示
+                if (GAME_STATE.timeLeft <= 10) {
+                    timerElement.classList.add('text-red-500', 'timer-pulse');
+                }
+            }, 1000);
+        }
+        
+        // 更新计时器显示
+        function updateTimer() {
+            const minutes = Math.floor(GAME_STATE.timeLeft / 60);
+            const seconds = GAME_STATE.timeLeft % 60;
+            timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        // 结束游戏
+        function endGame(isSuccess) {
+            GAME_STATE.isGameActive = false;
+            clearInterval(GAME_STATE.timerInterval);
+            
+            if (isSuccess) {
+                // 显示成功弹窗
+                showSuccessModal();
+            } else {
+                // 显示失败弹窗
+                showFailModal();
+            }
+        }
+        
+        // 显示成功弹窗
+        function showSuccessModal() {
+            successModal.classList.remove('hidden');
+            
+            // 添加动画效果
+            setTimeout(() => {
+                successContent.classList.remove('scale-95', 'opacity-0');
+                successContent.classList.add('scale-100', 'opacity-100');
+                
+                // 创建庆祝效果
+                createConfetti();
+            }, 10);
+        }
+        
+        // 显示失败弹窗
+        function showFailModal() {
+            failModal.classList.remove('hidden');
+            
+            // 添加动画效果
+            setTimeout(() => {
+                failContent.classList.remove('scale-95', 'opacity-0');
+                failContent.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+        
+        // 创建庆祝效果
+        function createConfetti() {
+            const colors = ['#FF8C38', '#8B4513', '#FFA500', '#FFD700', '#FF6347'];
+            const confettiContainer = document.createElement('div');
+            confettiContainer.style.position = 'fixed';
+            confettiContainer.style.top = '0';
+            confettiContainer.style.left = '0';
+            confettiContainer.style.width = '100%';
+            confettiContainer.style.height = '100%';
+            confettiContainer.style.pointerEvents = 'none';
+            confettiContainer.style.zIndex = '100';
+            document.body.appendChild(confettiContainer);
+            
+            // 创建100个彩色纸屑
+            for (let i = 0; i < 100; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                confetti.style.left = `${Math.random() * 100}vw`;
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.animationDelay = `${Math.random() * 5}s`;
+                confettiContainer.appendChild(confetti);
+            }
+            
+            // 3秒后移除纸屑容器
+            setTimeout(() => {
+                confettiContainer.remove();
+            }, 5000);
+        }
+        
+        // 事件监听
+        restartBtn.addEventListener('click', function() {
+            if (GAME_STATE.timerInterval) {
+                clearInterval(GAME_STATE.timerInterval);
+            }
+            initGame();
+        });
+        
+        claimBtn.addEventListener('click', function() {
+            successModal.classList.add('hidden');
+            successContent.classList.remove('scale-100', 'opacity-100');
+            successContent.classList.add('scale-95', 'opacity-0');
+            
+            // 重置游戏
+            setTimeout(() => {
+                initGame();
+            }, 300);
+        });
+        
+        tryAgainBtn.addEventListener('click', function() {
+            failModal.classList.add('hidden');
+            failContent.classList.remove('scale-100', 'opacity-100');
+            failContent.classList.add('scale-95', 'opacity-0');
+            
+            // 重置游戏
+            setTimeout(() => {
+                initGame();
+            }, 300);
+        });
+        
+        // 初始化游戏
+        window.addEventListener('load', initGame);
+    </script>
+</body>
+</html>

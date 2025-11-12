@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生成拼图碎片</title>
+    <script>
+        // 图片URL
+        const IMAGE_URL = "https://p26-flow-imagex-download-sign.byteimg.com/tos-cn-i-a9rns2rl98/50e6c6fbe58e4c1a9d13233f04ec5bdd.png~tplv-a9rns2rl98-24:720:720.png?rcl=20251104160644A49CF6C05D6FC7D91ACC&rk3s=8e244e95&rrcfp=8a172a1a&x-expires=1762848404&x-signature=1LqMcyJPChwDqHhi0EpWtcgaSI4%3D";
+        
+        // 拼图配置
+        const ROWS = 3;
+        const COLS = 3;
+        
+        // 当页面加载完成后执行
+        window.onload = function() {
+            generatePuzzlePieces();
+        };
+        
+        // 生成拼图碎片
+        function generatePuzzlePieces() {
+            const image = new Image();
+            image.crossOrigin = "Anonymous"; // 解决跨域问题
+            image.src = IMAGE_URL;
+            
+            image.onload = function() {
+                // 创建一个临时画布来处理图片
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // 设置画布大小为图片实际大小
+                canvas.width = image.width;
+                canvas.height = image.height;
+                ctx.drawImage(image, 0, 0);
+                
+                // 计算每个碎片的大小
+                const pieceWidth = image.width / COLS;
+                const pieceHeight = image.height / ROWS;
+                
+                // 创建所有碎片
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        // 创建一个新的画布来保存单个碎片
+                        const pieceCanvas = document.createElement('canvas');
+                        const pieceCtx = pieceCanvas.getContext('2d');
+                        pieceCanvas.width = pieceWidth;
+                        pieceCanvas.height = pieceHeight;
+                        
+                        // 从原图中裁剪出碎片
+                        pieceCtx.drawImage(
+                            image,
+                            col * pieceWidth, row * pieceHeight, pieceWidth, pieceHeight,
+                            0, 0, pieceWidth, pieceHeight
+                        );
+                        
+                        // 创建图片元素并添加到页面
+                        const img = document.createElement('img');
+                        img.src = pieceCanvas.toDataURL('image/png');
+                        img.alt = `拼图碎片 ${row * COLS + col}`;
+                        img.style.border = '1px solid #ccc';
+                        img.style.margin = '5px';
+                        document.body.appendChild(img);
+                        
+                        // 创建下载链接
+                        const a = document.createElement('a');
+                        a.href = img.src;
+                        a.download = `puzzle-piece-${row * COLS + col}.png`;
+                        a.textContent = `下载碎片 ${row * COLS + col}`;
+                        a.style.display = 'block';
+                        a.style.margin = '5px 0';
+                        document.body.appendChild(a);
+                    }
+                }
+            };
+            
+            image.onerror = function() {
+                console.error('图片加载失败');
+                document.body.textContent = '图片加载失败，请检查URL是否正确。';
+            };
+        }
+    </script>
+</head>
+<body>
+    <h1>生成拼图碎片</h1>
+    <p>请稍候，正在生成拼图碎片...</p>
+</body>
+</html>
